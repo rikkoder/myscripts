@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+file=$1
+
+if [[ $file =~ .+\.c$ ]]; then
+	#echo C file
+	out=${file/%.c}_c
+	#echo $out
+	gcc -o ${file/%.c}+$'_c' $file
+	if [ $? -eq 0 ]; then
+		if [[ $string = */* ]]; then
+			$out
+		else
+			./$out
+		fi
+	fi
+
+elif [[ $file =~ .+\.cpp$ ]]; then
+	#echo C++ file
+	out=${file/%.c}_cpp
+	#echo $out
+	g++ -o ${file/%.cpp}+$'_cpp' $file
+	if [ $? -eq 0 ]; then
+		if [[ $string = */* ]]; then
+			$out
+		else
+			./$out
+		fi
+	fi
+
+elif [[ $file =~ .+\.py$ ]]; then
+	#echo Python file
+	python $file
+
+else
+	echo Not a C/C++/Python source file
+
+fi
