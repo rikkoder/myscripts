@@ -6,7 +6,7 @@ if [[ $file =~ .+\.c$ ]]; then
 	#echo C file
 	out=${file/%.c}_c
 	#echo $out
-	gcc -o ${file/%.c}+$'_c' $file
+	gcc -o $out $file
 	if [ $? -eq 0 ]; then
 		if [[ $string = */* ]]; then
 			$out
@@ -17,9 +17,9 @@ if [[ $file =~ .+\.c$ ]]; then
 
 elif [[ $file =~ .+\.cpp$ ]]; then
 	#echo C++ file
-	out=${file/%.c}_cpp
+	out=${file/%.cpp}_cpp
 	#echo $out
-	g++ -o ${file/%.cpp}+$'_cpp' $file
+	g++ -o $out $file
 	if [ $? -eq 0 ]; then
 		if [[ $string = */* ]]; then
 			$out
