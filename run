@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+clear
+
 file=$1
 
 if [[ $file =~ .+\.c$ ]]; then
