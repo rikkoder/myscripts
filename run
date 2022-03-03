@@ -6,11 +6,11 @@ file=$1
 
 if [[ $file =~ .+\.c$ ]]; then
 	#echo C file
-	out=${file/%.c}_c
+	out=${file/%.c}.out
 	#echo $out
-	gcc -o $out $file
+	gcc -o $out $file -lm
 	if [ $? -eq 0 ]; then
-		if [[ $string = */* ]]; then
+		if [[ ${out:0:1} = / ]]; then
 			$out
 		else
 			./$out
@@ -19,11 +19,11 @@ if [[ $file =~ .+\.c$ ]]; then
 
 elif [[ $file =~ .+\.cpp$ ]]; then
 	#echo C++ file
-	out=${file/%.cpp}_cpp
+	out=${file/%.cpp}.out
 	#echo $out
 	g++ -o $out $file
 	if [ $? -eq 0 ]; then
-		if [[ $string = */* ]]; then
+		if [[ ${out:0:1} = / ]]; then
 			$out
 		else
 			./$out
@@ -34,7 +34,16 @@ elif [[ $file =~ .+\.py$ ]]; then
 	#echo Python file
 	python $file
 
+elif [[ $file =~ .+\.tex ]]; then
+	pdflatex $file
+	if [ $? -eq 0 ]; then
+		qpdfview ${file/%.tex}.pdf &
+	fi
+
+elif [[ $file =~ .+\.java ]]; then
+	java $file
+
 else
-	echo Not a C/C++/Python source file
+	echo Not a C/C++/Python/LaTex source file
 
 fi
