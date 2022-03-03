@@ -44,6 +44,6 @@ elif [[ $file =~ .+\.java ]]; then
 	java $file
 
 else
-	echo Not a C/C++/Python/LaTex source file
+	echo "Not a C/C++/Python/LaTex source file"
 
 fi
