@@ -31,8 +31,7 @@ xkb_symbols "remote" {
 	key <AE01> { [ Katakana ] };
 
 # use KeyPad 1 for 1/exclam
-	key <KP1> { type= "FOUR_LEVEL_MIXED_KEYPAD",
-	[ exclam, 1, KP_End, KP_1 ] };
+	key <KP1> { [ 1, exclam ] };
 #     key <KP5>  { [ KP_Right, KP_6, U2192, U21D2  ]        };
 # 	    key <I129> { [ KP_Down, KP_2, U2193, U21D3  ]        };
 # 		    key <AD12> { [ KP_Up, KP_8, U2191, U21D1  ]   };
