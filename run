@@ -3,6 +3,7 @@
 clear
 
 file=$1
+browser=firefox
 
 if [[ $file =~ .+\.c$ ]]; then
 	#echo C file
@@ -30,20 +31,26 @@ elif [[ $file =~ .+\.cpp$ ]]; then
 		fi
 	fi
 
+elif [[ $file =~ .+\.java ]]; then
+	javac $file
+	if [ $? -eq 0 ]; then
+		java ${file/%.java}
+	fi
+
 elif [[ $file =~ .+\.py$ ]]; then
 	#echo Python file
 	python $file
 
-elif [[ $file =~ .+\.tex ]]; then
+elif [[ $file =~ .+\.tex$ ]]; then
 	pdflatex $file
 	if [ $? -eq 0 ]; then
 		qpdfview ${file/%.tex}.pdf &
 	fi
 
-elif [[ $file =~ .+\.java ]]; then
-	java $file
+elif [[ $file =~ .+\.html$ ]]; then
+	$browser $file
 
 else
-	echo "Not a C/C++/Python/LaTex source file"
+	echo "Not a C/C++/Python/LaTex/HTML source file"
 
 fi
