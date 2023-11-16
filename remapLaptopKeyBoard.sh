@@ -28,7 +28,8 @@ cat >/tmp/xkb/symbols/custom <<\EOF
 xkb_symbols "remote" {
 
 # remap 1/exclam key to Katakana with xkb then Disable Katakana Keysym with xmodmap
-	key <AE01> { [ Katakana ] };
+# make key ONE_LEVEL type to avoid CAPS_LOCK and SHIFT modifiers
+	key <AE01> { type= "ONE_LEVEL", [ Katakana ] };
 
 # use KeyPad 1 for 1/exclam
 	key <KP1> { [ 1, exclam ] };
