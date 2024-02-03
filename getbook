@@ -1,0 +1,459 @@
+#!/bin/env perl
+
+##################################################
+#                  NAME: getbook                 #
+#                AUTHOR: Rikku <rikkoder@github> #
+#           DESCRIPTION: See POD                 #
+##################################################
+
+use strict;
+# use warnings;
+
+use feature 'signatures';
+
+
+#########################
+#   Include Libraries   #
+#########################
+#
+use LWP::Simple qw($ua get getstore);
+use HTML::TreeBuilder;
+use File::Path qw(make_path);
+use Getopt::Long qw(:config gnu_getopt no_auto_abbrev no_ignore_case);
+use Pod::Usage;
+
+
+#############################
+#   Windows Compatibility   #
+#############################
+#
+my $PATH_SEP = '/';
+if ($ENV{'OS'} && $ENV{'OS'} eq 'Windows_NT') {
+	$ENV{'HOME'} = "$ENV{'HOMEDRIVE'}$ENV{'HOMEPATH'}" if $ENV{'OS'} eq 'Windows_NT';	# defining for windows
+	$PATH_SEP = "\\";
+}
+
+
+###############
+#   GLOBALS   #
+###############
+#
+our $VERSION = 0.1;
+our $DEFAULT_PATH = "$ENV{'HOME'}${PATH_SEP}books$PATH_SEP";
+
+
+############
+#   Main   #
+############
+#
+main();
+
+
+##################################################
+#                  SUBROUTINES                   #
+##################################################
+#
+#
+
+######################################################################
+#                  Name: main                                        #
+#            Parameters: Command Line Arguments                      #
+#                Return: 0 Success, 1 Failure                        #
+#           Description: Main subroutine isn't necessary in perl but #
+#                        it is rather used reduce global footprint.  #
+######################################################################
+#
+sub main () {
+	my $OPTS = process_opts();
+	my $query = join " ", @ARGV;
+
+	my ( $header, @books ) = fetch_books( $query, $OPTS );
+	my $header_indexes = fetch_indexes( $header );
+	@books = filter_books( $OPTS, $header_indexes, @books );
+
+	my $book_index = ( $$OPTS{'show'} ? list_books( $OPTS, $header_indexes, @books ) : 0 );
+	download_book( $OPTS, $header_indexes, $books[$book_index] ) if $book_index >= 0;
+}
+
+
+######################################################################
+#                  Name: process_opts                                #
+#            Parameters: Void                                        #
+#                Return: Reference to hash having parsed options     #
+#           Description: Subroutine to process command line options  #
+#                        given to the program and return as a hash   #
+#                        reference.                                  #
+######################################################################
+#
+sub process_opts {
+	my %OPTS = ('quiet' => '',
+				'show' => '',
+				'isbn' => '',
+				'deep' => '',
+				'version' => '',
+				'help' => '',
+				'man' => '',
+				'limit' => 10,
+				'topic' => '',
+				'path' => $DEFAULT_PATH,
+				'formats' => [],	# reference to empty array
+				'authors' => []	# reference to empty array
+				);
+	
+	GetOptions ('quiet|q' => sub { $OPTS{'quiet'} = 1 unless $OPTS{'show'}; },
+				'show|s' => sub { $OPTS{'quiet'} = 0; $OPTS{'show'} = 1; },
+				'isbn|i' => \$OPTS{'isbn'},
+				'deep|d' => \$OPTS{'deep'},
+				'version|v' => \$OPTS{'version'},
+				'help|usage' => \$OPTS{'help'},
+				'man' => \$OPTS{'man'},
+				'limit|l:10' => \$OPTS{'limit'},
+				'topic|t:s' => \$OPTS{'topic'},
+				'path|p:s' => \$OPTS{'path'},
+				'formats|f:s@' => $OPTS{'formats'},
+				'authors|a:s@' => $OPTS{'authors'}
+				) or die "$!";
+	
+	pod2usage ( -verbose => 2, -exitval => 0 ) or die "Couldn't display the manpage.\n" if $OPTS{'man'};
+
+	my $vers_msg = "$VERSION Version";
+	pod2usage ( -msg => $vers_msg,
+				-exitval => 0,
+				-verbose => 99,
+				-sections => [ "SYNOPSIS", "OPTIONS/list of options:" ],
+				) or die "Couldn't display help.\n"
+				if $OPTS{'help'};
+	
+	if ($OPTS{'version'}) {
+		print "$vers_msg\n";
+		exit 0;
+	}
+
+	pod2usage ( -msg => "Invalid query input, use --help for more help.\n$vers_msg",
+				-exitval => 2,
+				-verbose => 0,
+				) or die "Couldn't display help on empty query.\n"
+				unless @ARGV;
+
+	@{$OPTS{'formats'}} = split( /,/, join( ',', @{$OPTS{'formats'}} ) );
+	@{$OPTS{'authors'}} = split( /,/, join( ',', @{$OPTS{'authors'}} ) );
+	
+	return \%OPTS;
+}
+
+
+######################################################################
+#                  Name: fetch_books                                 #
+#            Parameters: Search query, Options                       #
+#                Return: Collection of books including header        #
+#           Description: Subroutine to use the search query and the  #
+#                        command line options to return collection   #
+#                        of books.                                   #
+######################################################################
+#
+sub fetch_books ( $query, $OPTS ) {
+	# libgen.li
+# 	my $url = "http://libgen.li/index.php?req=$query&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=s&columns%5B%5D=y&columns%5B%5D=p&columns%5B%5D=i&objects%5B%5D=f&objects%5B%5D=e&objects%5B%5D=s&objects%5B%5D=a&objects%5B%5D=p&objects%5B%5D=w&topics%5B%5D=l&topics%5B%5D=c&topics%5B%5D=f&topics%5B%5D=a&topics%5B%5D=m&topics%5B%5D=r&topics%5B%5D=s&res=25&filesuns=all";
+
+	# libgen.rs
+	my $res_per_page = $$OPTS{'deep'} ? 100 : 25;
+	my $search_mode = $$OPTS{'isbn'} ? 'identifier' : 'def';
+	die "Invalid ISBN, enter only digits with no space or hyphens.\n" if ( $$OPTS{'isbn'} && !($query =~ /(\d{10}|\d{13})/) );
+	my $url = "http://libgen.rs/search.php?req=$query&open=0&res=$res_per_page&view=simple&phrase=1&column=def";
+
+	my $html_content = get($url);
+	my $tree = HTML::TreeBuilder->new_from_content($html_content);
+	my @table = $tree->look_down(_tag => 'table', class => 'c');
+	my @books = $table[0]->look_down(_tag => 'tr');
+
+	return @books;
+}
+
+
+######################################################################
+#                  Name: filter_books                                #
+#            Parameters: Options, Indexes of header, Books           #
+#                Return: Collection of filtered books                #
+#           Description: Subroutine to use filter options provided   #
+#                        in $OPTS to return filtered collection of   #
+#                        books.                                      #
+######################################################################
+#
+sub filter_books ( $OPTS, $header_indexes, @books ) {
+	my $FORMATS_DEFINED = ( scalar(@{$$OPTS{'formats'}}) > 0 );
+	my $AUTHORS_DEFINED = ( scalar(@{$$OPTS{'authors'}}) > 0 );
+
+	return @books unless ( $FORMATS_DEFINED || $AUTHORS_DEFINED );
+
+	my $opt_formats= join '|', @{$$OPTS{'formats'}};
+	my $opt_authors= join '|', @{$$OPTS{'authors'}};
+
+	my @filtered_books = ();
+	for my $book (@books) {
+		my @fields = $book->look_down(_tag => 'td');
+		my $ext = $fields[$$header_indexes{'Extension'}]->as_text;
+		my $authors = $fields[$$header_indexes{'Author(s)'}]->as_text;
+
+		next if ( $FORMATS_DEFINED && !($ext =~ /($opt_formats)/) );
+		next if ( $AUTHORS_DEFINED && !($authors =~ /($opt_authors)/) );
+
+		push( @filtered_books, $book );
+		# if only first book is required don't process whole array
+		last unless( $$OPTS{'show'} || scalar(@filtered_books) == 0 );
+	}
+	return @filtered_books;
+}
+
+
+######################################################################
+#                  Name: fetch_indexes                               #
+#            Parameters: Header row of the books                     #
+#                Return: Reference to hash containing indexes for    #
+#                        each header                                 #
+#           Description: Subroutine that takes header which is array #
+#                        reference and returns a reference to hash   #
+#                        containing the header indexes.              #
+######################################################################
+#
+sub fetch_indexes ( $header ) {
+	my @head_columns = $header->look_down(_tag => 'td');
+	my $i = 0;
+	my %header_indexes = ();
+	for my $head (@head_columns) {
+		$header_indexes{$head->as_text} = $i;
+		$i++;
+	}
+	return \%header_indexes;
+}
+
+
+######################################################################
+#                  Name: list_books                                  #
+#            Parameters: Options, Indexes of headers, Books          #
+#                Return: Index of book to download, -1 if canceled   #
+#           Description: Subroutine to display the list of books and #
+#                        take user input to select a book for        #
+#                        download or to cancel.                      #
+######################################################################
+#
+sub list_books ( $OPTS, $header_indexes, @books ) {
+	my @header = ( 'Title', 'Author(s)', 'Publisher', 'Year', 'Pages', 'Language', 'Size', 'Extension' );
+	my %header_sizes = ( 'Title' => 50,
+						'Author(s)' => 30,
+						'Publisher' => 20,
+						'Year' => 4,
+						'Pages' => 6,
+						'Language' => 10,
+						'Size' => 9,
+						'Extension' =>9
+					   	);
+	my $tot_len = 2 + scalar( @header ) + length( "No." );
+	for my $head (@header) {
+		$tot_len += $header_sizes{$head};
+	}
+
+	print '_' x $tot_len, "\n";
+	print "|No.|";
+	for my $head (@header) {
+		printf "%*.*s|", -$header_sizes{$head}, $header_sizes{$head}, $head;
+	}
+
+	print "\n", '-' x $tot_len, "\n";
+
+	my $overflow_str = '...';
+	my $count = 0;
+	for my $ele (@books) {
+		last if $count >= $$OPTS{'limit'};
+
+		my @book = $ele->look_down(_tag => 'td');
+		$count++;
+
+		printf "|%-3d|", $count;
+		for my $head (@header) {
+			my $value = $book[$$header_indexes{$head}]->as_text;
+			my $len = $header_sizes{$head};
+			my $pad = '';
+			if (length $value > $len) {
+				$len -= length $overflow_str;
+				$pad = $overflow_str;
+			} 
+			printf "%*.*s%s|", -$len, $len, $value, $pad;
+		}
+		print "\n";
+	}
+	print '_' x $tot_len, "\n";
+
+	my $formats = join ', ', @{$$OPTS{'formats'}};
+	die "No $formats books found :( try using deep search (-d) or modifying search keywords..\n" if $count < 1;
+
+	print "\nEnter the book no. in range [1, $count] to download the book or else to cancel: ";
+	my $book_index = <STDIN>;
+
+	return ($book_index =~ /^\d+$/ && 1 <= $book_index && $book_index <= $count) ? $book_index-1 : -1;
+}
+
+
+######################################################################
+#                  Name: download_book                               #
+#            Parameters: Options, Indexes of header, Selected book   #
+#                Return: Void                                        #
+#           Description: Subroutine to download the selected book at #
+#                        the given or default path.                  #
+######################################################################
+#
+sub download_book ( $OPTS, $header_indexes, $book ) {
+	my $formats = join ', ', @{$$OPTS{'formats'}};
+	die "No $formats books found :( try using deep search (-d) or modifying search keywords..\n" unless $book;
+
+	my @fields = $book->look_down(_tag => 'td');
+	my $book_name = $fields[$$header_indexes{'Title'}]->as_text;
+	my $file_ext = $fields[$$header_indexes{'Extension'}]->as_text;
+	my @mirrors = $fields[$$header_indexes{'Mirrors'}]->look_down(_tag => 'a');
+	my $mirror_url = $mirrors[0]->attr('href');
+
+	my $download_page = get($mirror_url);
+	my $tree = HTML::TreeBuilder->new_from_content($download_page);
+	my @download_divs = $tree->look_down(_tag => 'div', id => 'download');
+	my @download_urls = $download_divs[0]->look_down(_tag => 'a');
+	my $download_url = $download_urls[0]->attr('href');
+	$download_url =~ s/https:/http:/;
+
+	my $file_name = "$book_name.$file_ext";
+	if ($download_url =~ /\/([^\/]+\.${file_ext})$/i) {
+		$file_name = $1;
+		$file_name =~ s/%([a-fA-F\d]{2})/chr hex $1/eg;
+	}
+
+	my $file_path = $$OPTS{'path'};
+	$file_path .= $PATH_SEP unless substr( $file_path, -1 ) eq $PATH_SEP;
+	$file_path .= "$$OPTS{'topic'}$PATH_SEP" if $$OPTS{'topic'};
+	make_path($file_path) unless -d $file_path;
+
+	if (-e $file_path.$file_name) {
+		print "A file with the name '$file_name' already exists do you want to overwrite [y/N]: ";
+		my $input = <STDIN>;
+		chomp $input;
+		return unless $input =~ /^y$/i;
+	}
+	
+	open(my $file, ">",  $file_path.$file_name) or die "Can't open $file_name: $!";
+
+	$ua->show_progress(1) unless $$OPTS{'quiet'};
+ 	my $response_code = getstore($download_url, $file);
+	close $file or die "$file: $!";
+	die "download error: $response_code for GET $download_url\n" if ( $response_code < 200 || $response_code > 299 );
+}
+
+
+__END__
+
+###########
+#   POD   #
+###########
+
+=head1 B<NAME>
+
+B<getbook>: a script to search and download books
+
+=head1 B<SYNOPSIS>
+
+B<getbook> [I<OPTIONS>] I<QUERY>
+
+=head1 B<DESCRIPTION>
+
+B<getbook> is a script that allows the user to search and download books using various forms of queries. It is simple to use yet it provides various options for granual control. Available options are provided in the L<OPTIONS section|/OPTIONS> and their default values are given in the L<DEFAULTS section|/DEFAULTS>.
+
+=head1 B<OPTIONS>
+
+=head2 list of options:
+
+ -q, --quiet                          do not show the download progress
+ -s, --show                           show list of books before downloading
+ -i, --isbn                           treat QUERY as ISBN number
+ -d, --deep                           do deep search
+ -l, --limit=NUM                      show at max NUM number of books
+ -t, --topic=TOPIC                    download book in the sub-dir TOPIC
+ -p, --path=PATH                      download book in the PATH
+ -f, --format=FORMAT1[,FORMAT2...]    only show books having mentioned formats
+ -a, --authors=AUTHOR1[,AUTHOR2...]   only show books by mentioned authors
+ -v, --version                        display the current version
+ --help, --usage                      show Usage and list of options
+ --man                                show manpage
+
+=head2 B<-q>, B<--quiet>
+
+This option doesn't take any argument. The option tells the program not to show the download progress of the book. This option is ineffective when L<B<-s>, B<--show> option|/-s, --show> is also passed.
+
+=head2 B<-s>, B<--show>
+
+When this option is enabled, a list of books is shown as per the search options and query provided. The user is then asked which book to download.
+
+=head2 B<-i>, B<--isbn>
+
+Enabling this option tells B<getbook> to treat the QUERY as ISBN number. The QUERY then must be a sequence of 13 digits (for ISBN-13) or 10 digits (for ISBN-10) without anyother character (space or hyphen aren't allowed).
+
+=head2 B<-d>, B<--deep>
+
+When this option is enabled, a deep search is done. this may take a little longer time. This option is only helpful when applying filters (such as L<B<-f>, B<--formats>|/B<-f>, B<--formats>> or L<B<-a>, B<--authors>|/B<-a>, B<--authors>>) gives few or no results. When this option is disabled only top 25 results are considered.
+
+=head2 B<-l>, B<--limit> I<NUM>
+
+This option takes an integer argument I<NUM>. This option sets the maximum size of the list of books to display to I<NUM>. When L<B<-d>, B<--deep> option|/B<-d>, B<--deep>> is enabled the upper limit of I<NUM> is 100, otherwise it is 25. A value of I<NUM> argument greater than upper limit has the same effect as passing upper limit as I<NUM>. If the option is not passed the default limit is used. See L<DEFAULTS section|/DEFAULTS> for default value of limit.
+
+=head2 B<-t>, B<--topic> I<TOPIC>
+
+This option takes a directory name argument I<TOPIC>. When I<TOPIC> is provided, B<getbook> downloads the book inside the I<TOPIC> sub-directory under the I<PATH> directory, i.e. I<PATH/TOPIC>. This option is useful for categorizing the books based on their topics.
+
+=head2 B<-p>, B<--path> I<PATH>
+
+This option takes a path argument I<PATH>. If I<PATH> is provided then the book would be downloaded inside the I<PATH> otherwise it would be downloaded inside the default path. See L<DEFAULTS section|/DEFAULTS> for default value of I<PATH>.
+
+=head2 B<-f>, B<--formats> I<FORMAT1[,FORMAT2...]>
+
+If you want you can search or download books having certain I<FORMAT1>, e.g. pdf or epub. Multiple formats can also be given as argument (each format should be separated by ',' with no space in-between, like S<FORMAT1[,FORMAT2...]>). Another way to pass multiple formats is to add the B<-f>, B<--formats> option multiple times, e.g. C<getbook -f pdf -f epub>. When multiple formats are given, only the books having any of the those formats will be listed or downloaded.
+
+=head2 B<-a>, B<--authors> I<AUTHOR1[,AUTHOR2...]>
+
+This option takes input names of authors as AUTHOR1[,AUTHRO2...]. If the author name consists space, wrap the name around quotes, e.g. S<-a "Brian W Kernighan">. Multiple authors can be provided by seperating their names with ',' without sapce in-between. Another way to provide multiple authors is to pass B<-a>, B<--authors> option multiple times, e.g. C<getbook -a Brian -a Dennis>. When multiple authors are provided, only the books having any of the given authors as it's author will be listed or downloaded.
+
+=head2 B<-v>, B<--version>
+
+This option shows the current version of the program. When this option is enabled all the options are ignored (except the L<B<--help>, B<--usage> option|/B<--help>, B<--usage>> and the L<B<--man> option|/B<--man>>), also any query (if provided) is also ignored.
+
+=head2 B<--help>, B<--usage>
+
+This options shows the current version of the program, the L<SYNOPSIS section|/SYNOPSIS> and the L<list of options section|/list of options:> of this manpage. When this option is provided, all other options are ignored (except the L<B<--man> option|/B<--man>>) as well as any query (if provided).
+
+=head2 B<--man>
+
+B<--man> option shows this manpage. When this option is passed, all other options are ignored as well as any query (if provided).
+
+=head1 B<DEFAULTS>
+
+=over
+
+=item B<-q>, B<--quiet> [disabled]
+
+=item B<-s>, B<--show> [disabled]
+
+=item B<-i>, B<--isbn> [disabled]
+
+=item B<-d>, B<--deep> [disabled]
+
+=item B<-l>, B<--limit> [10]
+
+=item B<-t>, B<--topic> [NULL]
+
+=item B<-p>, B<--path> [$HOME/books/ (or $HOMEDRIVE\$HOMEPATH\books\ for windows)]
+
+=item B<-f>, B<--format> [NULL]
+
+=item B<-a>, B<--authors> [NULL]
+
+=item B<--help>, B<--usage> [disabled]
+
+=item B<--man> [disabled]
+
+=back
+
+=cut
