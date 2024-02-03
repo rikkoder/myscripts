@@ -7,7 +7,7 @@
 ##################################################
 
 use strict;
-# use warnings;
+use warnings;
 
 use feature 'signatures';
 
