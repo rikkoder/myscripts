@@ -41,6 +41,10 @@ elif [[ $file =~ .+\.py$ ]]; then
 	#echo Python file
 	python $file
 
+elif [[ $file =~ .+\.pl$ ]]; then
+	#echo Perl file
+	perl $file
+
 elif [[ $file =~ .+\.tex$ ]]; then
 	pdflatex $file
 	if [ $? -eq 0 ]; then
@@ -51,6 +55,6 @@ elif [[ $file =~ .+\.html$ ]]; then
 	$browser $file
 
 else
-	echo "Not a C/C++/Python/LaTex/HTML source file"
+	echo "Not a C/C++/Python/Perl/LaTex/HTML source file"
 
 fi
