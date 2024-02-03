@@ -456,4 +456,22 @@ B<--man> option shows this manpage. When this option is passed, all other option
 
 =back
 
+=head1 B<EXAMPLES>
+
+=over
+
+=item C<getbook -t c -q the ansi c>
+
+Download the top result book for query "the ansi c" inside the subdir "c" under default path without showing download progress. Following has the same effect C<getbook -qtc the ansi c>.
+
+=item C<getbook -sl5 -fpdf mastering perl>
+
+Show the top 5 pdf book results for the query "mastering perl".
+
+=item C<getbook -i 9780596520687>
+
+Download the book having the ISBN 9780596520687.
+
+=back
+
 =cut
