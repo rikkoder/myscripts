@@ -29,7 +29,7 @@ use Pod::Usage;
 #
 my $PATH_SEP = '/';
 if ($ENV{'OS'} && $ENV{'OS'} eq 'Windows_NT') {
-	$ENV{'HOME'} = "$ENV{'HOMEDRIVE'}$ENV{'HOMEPATH'}" if $ENV{'OS'} eq 'Windows_NT';	# defining for windows
+	$ENV{'HOME'} = "$ENV{'HOMEDRIVE'}$ENV{'HOMEPATH'}";
 	$PATH_SEP = "\\";
 }
 
@@ -39,7 +39,7 @@ if ($ENV{'OS'} && $ENV{'OS'} eq 'Windows_NT') {
 ###############
 #
 our $VERSION = 0.1;
-our $DEFAULT_PATH = "$ENV{'HOME'}${PATH_SEP}books$PATH_SEP";
+our $DEFAULT_PATH = "$ENV{'HOME'}${PATH_SEP}Books$PATH_SEP";
 
 
 ############
